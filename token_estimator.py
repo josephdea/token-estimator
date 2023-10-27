@@ -65,10 +65,7 @@ def main():
     parser.add_argument("--model","-m",type=str,default=None)
     
     args = parser.parse_args()
-    if is_chat_model(args.model):
-        model = args.model 
-    else:
-        model = None
+    model = args.model
     arr = []
     if args.file_path == None:
         for path,_ in sorted(list(log_utils.get_final_results_from_dir(args.log_dir).items())):
