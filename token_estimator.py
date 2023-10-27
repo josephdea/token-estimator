@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 from evals.utils import log_utils
-from evals.registry import registry
+from evals.registry import registry, is_chat_model
 from pathlib import Path
 import json
 import seaborn as sns
@@ -20,12 +20,9 @@ def dfs_add(loaded_line,arr):
         for i in range(len(loaded_line)):
             dfs_add(loaded_line[i],arr)
 
-
-def parse_spec(logpath):
+def parse_spec(logpath,main_model=None,extraction_model=None):
     all_prompt_data = []
     all_sampled_data = []
-    main_model = None
-    extraction_model = None
     with logpath.open() as f:
         for line in f.readlines():
             line = line.strip()
@@ -34,10 +31,12 @@ def parse_spec(logpath):
                 comp_fn_name = loaded_line['spec']['completion_fns'][0]
                 completion_fn = registry.make_completion_fn(comp_fn_name)
                 if hasattr(completion_fn,'cot_completion_fn') and hasattr(completion_fn,'extract_completion_fn'): ### cot completion fn
-                    main_model = completion_fn.cot_completion_fn.model
+                    if(main_model == None):
+                        main_model = completion_fn.cot_completion_fn.model
                     extraction_model = completion_fn.extract_completion_fn.model
                 elif hasattr(completion_fn,'completion_fn'):   ### regular completion fn
-                    main_model = completion_fn.completion_fn.model
+                    if(main_model == None):
+                        main_model = completion_fn.completion_fn.model
                 else:
                     print("Setting Not Recognized")
                     return 0
@@ -46,7 +45,6 @@ def parse_spec(logpath):
                     dfs_add(loaded_line['data']['prompt'],all_prompt_data)
                 if 'sampled' in loaded_line['data']:
                     dfs_add(loaded_line['data']['sampled'],all_sampled_data)
-    #print(len(all_prompt_data),len(all_sampled_data))
     token_count = 0
     if main_model != None:
         encoder = tiktoken.encoding_for_model(main_model)
@@ -59,22 +57,27 @@ def parse_spec(logpath):
         for msg in all_sampled_data:
             token_count += len(encoder.encode(msg))
     return token_count
-    #TODO: create tiktoken model
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--log_dir","-d",type=str,default="./")
     parser.add_argument("--file_path","-f",type=str,default=None)
+    parser.add_argument("--model","-m",type=str,default=None)
+    
     args = parser.parse_args()
+    if is_chat_model(args.model):
+        model = args.model 
+    else:
+        model = None
     arr = []
-    if(args.file_path == None):
+    if args.file_path == None:
         for path,_ in sorted(list(log_utils.get_final_results_from_dir(args.log_dir).items())):
-            val = parse_spec(path)
+            val = parse_spec(path,main_model=model)
             arr.append(val)
             print(str(path).split("/")[-1],"token length:",val)
     else:
         path = Path(args.file_path)
-        val = parse_spec(path)
+        val = parse_spec(path,main_model=model)
         arr.append(val)
         print(str(path).split("/")[-1],"token length:",val)
     print("Average Token Length:",np.mean(arr))
