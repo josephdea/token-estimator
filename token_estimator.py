@@ -45,17 +45,22 @@ def parse_spec(logpath,main_model=None,extraction_model=None):
                     dfs_add(loaded_line['data']['prompt'],all_prompt_data)
                 if 'sampled' in loaded_line['data']:
                     dfs_add(loaded_line['data']['sampled'],all_sampled_data)
+
     token_count = 0
     if main_model != None:
         encoder = tiktoken.encoding_for_model(main_model)
         for msg in all_prompt_data:
             token_count += len(encoder.encode(msg))
-        for msg in all_sampled_data:
-            token_count += len(encoder.encode(msg))
-    if extraction_model != None:
-        encoder = tiktoken.encoding_for_model(extraction_model)
-        for msg in all_sampled_data:
-            token_count += len(encoder.encode(msg))
+    else:
+        return token_count
+
+    if extraction_model == None:
+        extraction_model = main_model
+
+    encoder = tiktoken.encoding_for_model(extraction_model)
+    for msg in all_sampled_data:
+        token_count += len(encoder.encode(msg))
+        
     return token_count
 
 def main():
