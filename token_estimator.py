@@ -41,8 +41,8 @@ def dfs_add(loaded_line,arr):
             dfs_add(loaded_line[i],arr)
 
 def parse_spec(logpath,main_model=None,extraction_model=None):
-    input_main_model = []
-    output_main_model = []
+    prompt_data = []
+    sampled_data = []
     with logpath.open() as f:
         for line in f.readlines():
             line = line.strip()
@@ -62,31 +62,35 @@ def parse_spec(logpath,main_model=None,extraction_model=None):
                     return 0
             elif 'run_id' in loaded_line and 'data' in loaded_line:
                 if 'prompt' in loaded_line['data']:
-                    dfs_add(loaded_line['data']['prompt'],input_main_model)
+                    dfs_add(loaded_line['data']['prompt'],prompt_data)
                 if 'sampled' in loaded_line['data']:
-                    dfs_add(loaded_line['data']['sampled'],output_main_model)
+                    dfs_add(loaded_line['data']['sampled'],sampled_data)
 
-    mm_input_token_count = 0
-    mm_output_token_count = 0
-    em_input_token_count = 0
-
+    main_model_token_count = 0
     if main_model != None:
         encoder = tiktoken.encoding_for_model(main_model)
-        for msg in input_main_model:
-            mm_input_token_count += len(encoder.encode(msg))
-        for msg in output_main_model:
-            mm_output_token_count += len(encoder.encode(msg))
-    else:
-        return 0
+        for msg in prompt_data:
+            main_model_token_count += len(encoder.encode(msg))
+        for msg in sampled_data:
+            main_model_token_count += len(encoder.encode(msg))
 
+    extraction_model_token_count = 0
     if extraction_model != None:
         encoder = tiktoken.encoding_for_model(extraction_model)
-        for msg in output_main_model:
-            em_input_token_count += len(encoder.encode(msg))
+        for msg in prompt_data:
+            extraction_model_token_count += len(encoder.encode(msg))
+        for msg in sampled_data:
+            extraction_model_token_count += len(encoder.encode(msg))
 
-    token_count = mm_input_token_count + mm_output_token_count + em_input_token_count
-    estimated_cost = pricing['input'].get(main_model,0) * mm_input_token_count + pricing['output'].get(main_model,0) * mm_output_token_count + pricing['input'].get(extraction_model,0) * em_input_token_count
-    return token_count,estimated_cost
+    return main_model_token_count,extraction_model_token_count
+
+def output_info(path,mm_count,em_count,arr):
+    if(em_count != 0):
+        arr.append((mm_count+em_count)/2)
+        print(str(path).split("/")[-1],"estimated token length range:","["+str(min(mm_count,em_count))+","+str(max(mm_count,em_count))+"]")
+    else:
+        arr.append(mm_count)
+        print(str(path).split("/")[-1],"token length:",mm_count)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -97,21 +101,15 @@ def main():
     args = parser.parse_args()
     model = args.model
     token_count_arr = []
-    cost_arr = []
     if args.file_path == None:
         for path,_ in sorted(list(log_utils.get_final_results_from_dir(args.log_dir).items())):
-            token_count,cost = parse_spec(path,main_model=model)
-            token_count_arr.append(token_count)
-            cost_arr.append(cost)
-            print(str(path).split("/")[-1],"token length:",token_count,"estimated cost:",cost)
+            mm_count,em_count = parse_spec(path,main_model=model)
+            output_info(path,mm_count,em_count,token_count_arr)
     else:
         path = Path(args.file_path)
-        token_count,cost = parse_spec(path,main_model=model)
-        token_count_arr.append(token_count)
-        cost_arr.append(cost)
-        print(str(path).split("/")[-1],"token length:",token_count,"estimated cost:",cost)
+        mm_count,em_count = parse_spec(path,main_model=model)
+        output_info(path,mm_count,em_count,token_count_arr)
     print("Average Token Length:",np.mean(token_count_arr))
-    print("Average Cost:",np.mean(cost_arr))
 
 
 if __name__ == "__main__":
