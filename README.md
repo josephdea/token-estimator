@@ -12,3 +12,9 @@ To get the token length for an all experiments in a directory of log files.
 ```sh
 python3 token_estimator.py -d log_dir/
 ```
+
+
+To specify the model used.
+```sh
+python3 token_estimator.py -d log_dir/ -m gpt-4
+```
