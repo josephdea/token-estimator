@@ -11,6 +11,26 @@ import seaborn as sns
 import random
 import tiktoken
 
+pricing = {
+    'input': {},
+    'output': {},
+}
+pricing['input']['gpt-4'] = 0.03 / 1000
+pricing['output']['gpt-4'] = 0.06 / 1000
+
+pricing['input']['gpt-4-32k'] = 0.06 / 1000
+pricing['output']['gpt-4-32k'] = 0.12 / 1000
+
+pricing['input']['gpt-3.5-turbo'] = 0.0015 / 1000
+pricing['output']['gpt-3.5-turbo'] = 0.002 / 1000
+
+pricing['input']['gpt-3.5-turbo-16k'] = 0.003 / 1000
+pricing['output']['gpt-3.5-turbo-16k'] = 0.004 / 1000
+
+pricing['input']['davinci-002'] = 0.002 / 1000
+pricing['output']['babbage-002'] = 0.0004 / 1000
+
+
 def dfs_add(loaded_line,arr):
     if(type(loaded_line) == dict):
         arr.append(loaded_line['content'])
@@ -21,8 +41,8 @@ def dfs_add(loaded_line,arr):
             dfs_add(loaded_line[i],arr)
 
 def parse_spec(logpath,main_model=None,extraction_model=None):
-    all_prompt_data = []
-    all_sampled_data = []
+    input_main_model = []
+    output_main_model = []
     with logpath.open() as f:
         for line in f.readlines():
             line = line.strip()
@@ -42,26 +62,31 @@ def parse_spec(logpath,main_model=None,extraction_model=None):
                     return 0
             elif 'run_id' in loaded_line and 'data' in loaded_line:
                 if 'prompt' in loaded_line['data']:
-                    dfs_add(loaded_line['data']['prompt'],all_prompt_data)
+                    dfs_add(loaded_line['data']['prompt'],input_main_model)
                 if 'sampled' in loaded_line['data']:
-                    dfs_add(loaded_line['data']['sampled'],all_sampled_data)
+                    dfs_add(loaded_line['data']['sampled'],output_main_model)
 
-    token_count = 0
+    mm_input_token_count = 0
+    mm_output_token_count = 0
+    em_input_token_count = 0
+
     if main_model != None:
         encoder = tiktoken.encoding_for_model(main_model)
-        for msg in all_prompt_data:
-            token_count += len(encoder.encode(msg))
+        for msg in input_main_model:
+            mm_input_token_count += len(encoder.encode(msg))
+        for msg in output_main_model:
+            mm_output_token_count += len(encoder.encode(msg))
     else:
-        return token_count
+        return 0
 
-    if extraction_model == None:
-        extraction_model = main_model
+    if extraction_model != None:
+        encoder = tiktoken.encoding_for_model(extraction_model)
+        for msg in output_main_model:
+            em_input_token_count += len(encoder.encode(msg))
 
-    encoder = tiktoken.encoding_for_model(extraction_model)
-    for msg in all_sampled_data:
-        token_count += len(encoder.encode(msg))
-        
-    return token_count
+    token_count = mm_input_token_count + mm_output_token_count + em_input_token_count
+    estimated_cost = pricing['input'].get(main_model,0) * mm_input_token_count + pricing['output'].get(main_model,0) * mm_output_token_count + pricing['input'].get(extraction_model,0) * em_input_token_count
+    return token_count,estimated_cost
 
 def main():
     parser = argparse.ArgumentParser()
@@ -71,18 +96,23 @@ def main():
     
     args = parser.parse_args()
     model = args.model
-    arr = []
+    token_count_arr = []
+    cost_arr = []
     if args.file_path == None:
         for path,_ in sorted(list(log_utils.get_final_results_from_dir(args.log_dir).items())):
-            val = parse_spec(path,main_model=model)
-            arr.append(val)
-            print(str(path).split("/")[-1],"token length:",val)
+            token_count,cost = parse_spec(path,main_model=model)
+            token_count_arr.append(token_count)
+            cost_arr.append(cost)
+            print(str(path).split("/")[-1],"token length:",token_count,"estimated cost:",cost)
     else:
         path = Path(args.file_path)
-        val = parse_spec(path,main_model=model)
-        arr.append(val)
-        print(str(path).split("/")[-1],"token length:",val)
-    print("Average Token Length:",np.mean(arr))
+        token_count,cost = parse_spec(path,main_model=model)
+        token_count_arr.append(token_count)
+        cost_arr.append(cost)
+        print(str(path).split("/")[-1],"token length:",token_count,"estimated cost:",cost)
+    print("Average Token Length:",np.mean(token_count_arr))
+    print("Average Cost:",np.mean(cost_arr))
+
 
 if __name__ == "__main__":
     main()
