@@ -10,6 +10,7 @@ import json
 import seaborn as sns
 import random
 import tiktoken
+import sys
 
 pricing = {
     'input': {},
@@ -61,9 +62,9 @@ def parse_spec(logpath,main_model=None,extraction_model=None):
                     print("Setting Not Recognized")
                     return 0
             elif 'run_id' in loaded_line and 'data' in loaded_line:
-                if 'prompt' in loaded_line['data']:
+                if 'prompt' in loaded_line['data']: #this is input
                     dfs_add(loaded_line['data']['prompt'],prompt_data)
-                if 'sampled' in loaded_line['data']:
+                if 'sampled' in loaded_line['data']: #this is output
                     dfs_add(loaded_line['data']['sampled'],sampled_data)
 
     main_model_token_count = 0
@@ -82,15 +83,37 @@ def parse_spec(logpath,main_model=None,extraction_model=None):
         for msg in sampled_data:
             extraction_model_token_count += len(encoder.encode(msg))
 
-    return main_model_token_count,extraction_model_token_count
+    input_token_count = 0
+    output_token_count = 0
+    if main_model != None: # main model looks at prompt as input tokens, and produced sampled as output tokens
+        encoder = tiktoken.encoding_for_model(main_model)
+        for msg in prompt_data:
+            input_token_count += len(encoder.encode(msg))
+        for msg in sampled_data:
+            output_token_count += len(encoder.encode(msg))
 
-def output_info(path,mm_count,em_count,arr):
+    if extraction_model != None: #extraction model looks at sampled as input tokens, and produces the answer as output tokens(TODO)
+        encoder = tiktoken.encoding_for_model(extraction_model)
+        for msg in sampled_data:
+            input_token_count += len(encoder.encode(msg))
+
+
+
+    return main_model_token_count,extraction_model_token_count,input_token_count,output_token_count
+
+def output_info(path,mm_count,em_count,arr,itc,otc):
     if(em_count != 0):
         arr.append((mm_count+em_count)/2)
-        print(str(path).split("/")[-1],"estimated token length range:","["+str(min(mm_count,em_count))+","+str(max(mm_count,em_count))+"]")
+        print(str(path).split("/")[-1])
+        print("estimated token length range:","["+str(min(mm_count,em_count))+","+str(max(mm_count,em_count))+"]")
+        print("input token length:",itc)
+        print("output token length:",otc)
     else:
         arr.append(mm_count)
-        print(str(path).split("/")[-1],"token length:",mm_count)
+        print(str(path).split("/")[-1])
+        print("estimated token length:",mm_count)
+        print("input token length:",itc)
+        print("output token length:",otc)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -103,16 +126,14 @@ def main():
     token_count_arr = []
     if args.file_path == None:
         for path,_ in sorted(list(log_utils.get_final_results_from_dir(args.log_dir).items())):
-            mm_count,em_count = parse_spec(path,main_model=model)
-            output_info(path,mm_count,em_count,token_count_arr)
+            mm_count,em_count,itc,otc = parse_spec(path,main_model=model)
+            output_info(path,mm_count,em_count,token_count_arr,itc,otc)
     else:
         path = Path(args.file_path)
-        mm_count,em_count = parse_spec(path,main_model=model)
-        output_info(path,mm_count,em_count,token_count_arr)
+        mm_count,em_count,itc,otc = parse_spec(path,main_model=model)
+        output_info(path,mm_count,em_count,token_count_arr,itc,otc)
     print("Average Token Length:",np.mean(token_count_arr))
 
 
 if __name__ == "__main__":
     main()
-
-
