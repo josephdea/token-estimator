@@ -45,14 +45,18 @@ def main():
     output_arr = []
     if args.file_path == None:
         for path,_ in sorted(list(log_utils.get_final_results_from_dir(args.log_dir).items())):
-            itc,otc = parse_spec(path,main_model=model)
-            print(path,"input token count:",itc, "output token count:",otc)
+            itc,otc = parse_spec(path)
+            print(path)
+            print("input token count:",itc)
+            print("output token count:",otc,"\n")
             input_arr.append(itc)
             output_arr.append(otc)
     else:
         path = Path(args.file_path)
-        itc,otc = parse_spec(path,main_model=model)
-        print(path,"input token count:",itc, "output token count:",otc)
+        itc,otc = parse_spec(path)
+        print(path)
+        print("input token count:",itc)
+        print("output token count:",otc,"\n")
         input_arr.append(itc)
         output_arr.append(otc)
     print("Average Input Token Length:",np.mean(input_arr))
